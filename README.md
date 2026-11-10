@@ -78,6 +78,9 @@ is free, starting at 8000, and needs Python 3.8 or newer. Rebuild it after you c
 
 `app/sample/deck.html` is a working example.
 
+**Already have a deck in PowerPoint, Keynote, Google Slides or PDF?** [CONVERTING.md](CONVERTING.md) has a
+prompt to give an AI coding agent that converts it, speaker notes included.
+
 ## Keys on the laptop
 
 | Key | Does |
