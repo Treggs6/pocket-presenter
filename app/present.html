@@ -131,9 +131,10 @@ async function online(d) {
 }
 
 async function shareDeck(d, pair) {
-  // The phone only needs enough to preview: files over 3 MB (usually video) stay on the laptop, and at most 12 MB
-  // goes up (ntfy.sh's free tier holds 20 MB per network for 3 hours).
-  const PER_FILE = 3 * 1024 * 1024, TOTAL = 12 * 1024 * 1024;
+  // The phone only needs enough to preview. On ntfy.sh's free tier (20 MB held per network for 3 hours), files over
+  // 3 MB (usually video) stay on the laptop and at most 12 MB goes up; your own relay can take the whole deck.
+  const free = new URL(d.relay).host === 'ntfy.sh', MB = 1024 * 1024;
+  const PER_FILE = (free ? 3 : 20) * MB, TOTAL = (free ? 12 : 120) * MB;
   const list = await (await fetch('/files')).json();
   const files = [], skipped = []; let total = 0;
   const order = list.files.slice().sort((a, b) => (b.path === list.entry) - (a.path === list.entry)

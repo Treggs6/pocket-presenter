@@ -49,8 +49,15 @@ which networks they're on.
 
 The relay is [ntfy.sh](https://ntfy.sh), a free public service, by default. Its free tier allows each network 250
 messages a day (a click is one message), files of up to 2 MB (pocket-presenter splits the deck to fit) and 20 MB
-stored at once. That's plenty for a few run-throughs and the talk. You can host your own ntfy server and point at
-it with `python3 present.py --relay https://your-ntfy-server`.
+stored at once. That's plenty for a few run-throughs and the talk.
+
+**Your own relay.** Any [ntfy server](https://docs.ntfy.sh/install/) works. Put its address in the **Relay** box on
+the drop page (it's remembered), or start with `python3 present.py --relay https://your-ntfy-server`. With your
+own relay, the whole deck goes to the phone, video included (files up to 20 MB, 120 MB in all), and there are no
+public daily limits. The relay must be `https://`, or the phone page can't reach it. A small server with
+[Caddy](https://caddyserver.com) in front of ntfy is enough; to keep it from being used as a general relay, set
+`auth-default-access: deny-all` and allow only pocket-presenter's channels:
+`ntfy access everyone 'pp-*' read-write`.
 
 ### Same Wi-Fi mode
 

@@ -23,7 +23,7 @@ APP = os.path.join(HERE, 'app')                     # the app's own pages: drop 
 STORE = tempfile.mkdtemp(prefix='pocket-presenter-')  # dropped decks live here while the app runs
 cond = threading.Condition()
 state = {'step': 0, 't0': None, 'black': False, 'remotes': 0, 'build': '', 'entry': '', 'title': '', 'target': 0,
-         'mode': 'internet'}
+         'mode': 'internet', 'relay': ''}   # relay: picked on the drop page, else --relay
 args = None
 
 
@@ -78,7 +78,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self.events('role=remote' in url.query)
         if path == '/info':
             return self.send_json({'remote': [f'http://{ip}:{args.port}/remote.html' for ip in lan_ips()],
-                                   'relay': args.relay.rstrip('/'), 'phone_url': args.phone_url, **state})
+                                   'phone_url': args.phone_url, **state, 'relay': (state['relay'] or args.relay).rstrip('/')})
         if path == '/files':                              # the laptop packs these for the phone (internet mode)
             if not self.local():
                 return self.send_json({'error': 'laptop only'}, 403)
@@ -217,7 +217,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             with cond:
                 state.update(step=0, t0=None, black=False, entry=entry, title=d.get('title') or entry,
                              target=int(d.get('target') or 0), build=h.hexdigest()[:10],
-                             mode='local' if d.get('mode') == 'local' else 'internet')
+                             mode='local' if d.get('mode') == 'local' else 'internet',
+                             relay=d['relay'].strip() if re.match(r'^https://[^\s/]+(/\S*)?$', d.get('relay') or '') else '')
                 cond.notify_all()
             print(f'  deck loaded: {entry} (build {state["build"]})')
             return self.send_json(state)
