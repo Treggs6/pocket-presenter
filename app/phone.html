@@ -1,0 +1,187 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0e0e14">
+<title>Remote · pocket-presenter</title>
+<meta name="robots" content="noindex">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#0e0e14;color:#fff;font-family:-apple-system,system-ui,sans-serif;overscroll-behavior:none}
+body{display:flex;justify-content:center}
+#app{width:100%;max-width:560px;height:100dvh;display:flex;flex-direction:column;gap:10px;touch-action:manipulation;
+  padding:max(10px,env(safe-area-inset-top)) 12px max(10px,env(safe-area-inset-bottom))}
+#bar{display:flex;align-items:center;gap:12px;font-size:15px;color:#a8a8c0}
+#clock{font:700 26px ui-monospace,Menlo,monospace;color:#fff} #clock.over{color:#f5a524}
+#dot{width:10px;height:10px;border-radius:50%;background:#e5484d;margin-left:auto} #dot.ok{background:#30a46c}
+#view{width:100%;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden;position:relative;flex:none}
+#view iframe{position:absolute;left:0;top:0;width:1280px;height:720px;border:0;transform-origin:0 0;pointer-events:none;background:#fff}
+#text{flex:1;min-height:0;overflow:auto;background:#181824;border:1px solid #2a2a3c;border-radius:12px;padding:14px 16px}
+h3{font-size:11px;letter-spacing:3px;color:#8a8aa4;font-weight:700;margin-bottom:8px}
+h3 em{font-style:normal;color:#f5a524;margin-left:6px}
+#say p{font-size:23px;line-height:1.38;font-weight:650;margin-bottom:10px}
+#say .none,#next1 .none{color:#6c6c86;font-weight:500;font-style:italic}
+#after{margin-top:16px;padding-top:12px;border-top:1px solid #2a2a3c}
+#next1 p{font-size:18px;line-height:1.38;color:#9a9ab4;font-weight:550}
+#nav{display:flex;gap:10px;flex:none}
+button{font:inherit;border:0;border-radius:14px;color:#fff;cursor:pointer;user-select:none;-webkit-user-select:none}
+#back{width:84px;background:#24243a;font-size:26px}
+#next{flex:1;height:76px;background:linear-gradient(#ffd37a,#f5a524);color:#1b1206;font-size:24px;font-weight:800;letter-spacing:1px}
+#next:active,#back:active{filter:brightness(.85)}
+#more{display:flex;justify-content:space-between;font-size:13px;color:#8a8aa4} #more span{padding:4px 0;cursor:pointer}
+#load{position:fixed;inset:0;z-index:9;background:#0e0e14;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:30px;text-align:center}
+#load b{font-size:22px} #load span{font-size:16px;color:#a8a8c0;line-height:1.45;max-width:420px}
+#bar2{width:min(320px,80vw);height:8px;background:#24243a;border-radius:4px;overflow:hidden} #bar2 i{display:block;height:100%;width:0;background:#f5a524;transition:width .2s}
+#msg{display:none;background:#3b1d22;color:#ffb3b3;font-size:14px;padding:8px 12px;border-radius:10px}
+</style></head>
+<body>
+<div id="load"><b id="lt">Connecting…</b><div id="bar2"><i id="lp"></i></div><span id="ls"></span></div>
+<div id="app">
+ <div id="bar"><span id="clock">0:00</span><span id="target"></span><span id="count"></span><span id="dot"></span></div>
+ <div id="msg"></div>
+ <div id="view"><iframe id="deck" title="slide preview"></iframe></div>
+ <div id="text">
+  <h3>SAY<em id="build"></em></h3><div id="say"></div>
+  <div id="after"><h3>AFTER THE NEXT CLICK</h3><div id="next1"></div></div>
+ </div>
+ <div id="nav"><button id="back" aria-label="Back">‹</button><button id="next">NEXT ›</button></div>
+ <div id="more"><span id="black">Black screen</span><span id="reset">Reset clock</span><span id="home">Back to start</span></div>
+</div>
+<script src="relay.js"></script>
+<script>
+// pocket-presenter phone, internet mode. Opened from the laptop's QR code: #r=<relay>&t=<topic>&k=<key>.
+// Downloads the laptop's deck (encrypted on the relay), keeps it on this phone, and sends clicks back.
+const $ = id => document.getElementById(id);
+const frame = $('deck');
+let steps = [], i = 0, t0 = null, black = false, target = 0, build = null, relay = null, pair = null;
+
+function fit() { frame.style.transform = `scale(${$('view').clientWidth / 1280})`; }
+addEventListener('resize', fit); fit();
+function esc(t) { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+function fmt(t) { return esc(t).replace(/^(\[[^\]]*\]\s*)/, '<span style="color:#f5a524">$1</span>'); }
+function loading(title, sub, frac) {
+  $('load').style.display = title ? 'flex' : 'none';
+  if (!title) return;
+  $('lt').textContent = title; $('ls').textContent = sub || '';
+  $('bar2').style.display = frac === undefined ? 'none' : 'block'; $('lp').style.width = `${Math.round((frac || 0) * 100)}%`;
+}
+function msg(t) { $('msg').style.display = t ? 'block' : 'none'; $('msg').textContent = t || ''; }
+
+function render() {
+  const s = steps[i], nx = steps[i + 1];
+  frame.contentWindow && frame.contentWindow.postMessage({ pp: 'goto', step: i }, '*');
+  $('count').textContent = steps.length ? `${i + 1} / ${steps.length}` : '';
+  if (!s) return;
+  $('build').textContent = s.builds ? `build ${s.build + 1} of ${s.builds + 1}` : '';
+  $('say').innerHTML = s.say.length ? s.say.map(p => `<p>${fmt(p)}</p>`).join('') : '<p class="none">No notes on this slide.</p>';
+  $('next1').innerHTML = !nx ? '<p class="none">End of the deck.</p>'
+    : nx.same ? '<p class="none">The next build on this slide (same notes).</p>'
+    : nx.say.length ? `<p>${fmt(nx.say[0])}</p>` : '<p class="none">Next slide, no notes.</p>';
+  $('text').scrollTop = 0;
+  $('black').textContent = black ? 'Show slides' : 'Black screen';
+}
+function send() { if (relay && build) relay.send({ kind: 'state', build, step: i, black, t0 }); }
+function go(k) {
+  k = Math.max(0, Math.min(steps.length - 1, k));
+  if (k === i) return;
+  i = k; if (k > 0 && !t0) t0 = Date.now();
+  render(); send();
+  if (navigator.vibrate) navigator.vibrate(12);
+}
+
+$('next').onclick = () => go(i + 1);
+$('back').onclick = () => go(i - 1);
+$('home').onclick = () => { if (confirm('Go back to the first slide?')) go(0); };
+$('reset').onclick = () => { t0 = null; send(); };
+$('black').onclick = () => { black = !black; render(); send(); };
+addEventListener('keydown', e => {                       // a Bluetooth clicker paired with the phone works too
+  if (['ArrowRight', ' ', 'PageDown', 'ArrowDown', 'Enter'].includes(e.key)) { e.preventDefault(); go(i + 1); }
+  if (['ArrowLeft', 'PageUp', 'ArrowUp'].includes(e.key)) { e.preventDefault(); go(i - 1); }
+});
+let sx = null;                                           // swipe left = next, right = back
+$('app').addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
+$('app').addEventListener('touchend', e => {
+  if (sx === null) return; const dx = e.changedTouches[0].clientX - sx; sx = null;
+  if (Math.abs(dx) > 70) go(dx < 0 ? i + 1 : i - 1);
+});
+addEventListener('message', ev => {
+  const d = ev.data || {};
+  if (d.pp === 'ready') { steps = d.steps; render(); }
+});
+
+function applyState(m) {
+  if (m.build !== build) return;
+  t0 = m.t0 ?? null; black = !!m.black;
+  if (m.step !== i) i = m.step;
+  render();
+}
+
+// The deck goes into this phone's storage (served by phone-sw.js), so the preview works like on the laptop.
+async function loadDeck(b) {
+  const cache = await caches.open('pp-deck');
+  const base = new URL(`deck/${b.build}/`, location.href);
+  const fileUrl = p => new URL(p.split('/').map(encodeURIComponent).join('/'), base).href;
+  if (!(await cache.match(fileUrl(b.entry)))) {
+    loading('Downloading your deck…', 'Encrypted on the relay; only this phone and your laptop have the key.', 0);
+    const deck = await PP.Relay.downloadDeck(pair.k, b, p => loading('Downloading your deck…',
+      'Encrypted on the relay; only this phone and your laptop have the key.', p));
+    const runtime = new URL('runtime.js', location.href).href;
+    for (const f of deck.files) {
+      let body = f.bytes;
+      if (/\.html?$/i.test(f.path)) {                     // the preview needs the same runtime as the laptop
+        const html = new TextDecoder().decode(body), tag = `<script src="${runtime}"><\/script>`;
+        const at = html.search(/<\/body\s*>/i);
+        body = at < 0 ? html + tag : html.slice(0, at) + tag + html.slice(at);
+      }
+      await cache.put(fileUrl(f.path), new Response(body, { headers: { 'Content-Type': f.type || 'application/octet-stream' } }));
+    }
+    for (const req of await cache.keys()) if (!req.url.startsWith(base.href)) await cache.delete(req);   // older decks
+  }
+  build = b.build; steps = []; i = 0;
+  frame.src = fileUrl(b.entry) + '?pp_mode=preview';
+  document.title = `${b.title} · Remote`;
+  loading('');
+  relay.send({ kind: 'join', build });
+}
+
+async function start() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get('t') && h.get('k')) {
+    pair = { r: h.get('r') || 'https://ntfy.sh', t: h.get('t'), k: h.get('k') };
+    try { localStorage.setItem('pp-phone-pair', JSON.stringify(pair)); } catch (e) {}
+  } else {
+    try { pair = JSON.parse(localStorage.getItem('pp-phone-pair') || 'null'); } catch (e) {}
+  }
+  if (!pair) { loading('Scan the QR code on the laptop', 'This page needs the link from pocket-presenter\'s QR code.'); return; }
+  if (!('serviceWorker' in navigator) || !window.caches || !crypto.subtle) {
+    loading('This browser can\'t hold the deck', 'Open the link in Safari or Chrome (not a private window).'); return;
+  }
+  await navigator.serviceWorker.register('phone-sw.js');
+  await navigator.serviceWorker.ready;
+  relay = new PP.Relay(pair.r, pair.t);
+  relay.onError = t => msg(t);
+  loading('Connecting to your laptop…');
+  let pending = null, lastState = null, busy = false;
+  const consider = async b => {                           // newest deck first; one download at a time
+    pending = b; if (busy) return;
+    busy = true;
+    while (pending) { const x = pending; pending = null; if (x.build !== build) { try { await loadDeck(x); } catch (e) { loading('Couldn\'t get the deck', e.message); } } }
+    busy = false;
+    if (lastState) applyState(lastState);
+  };
+  relay.listen(m => {
+    if (m.kind === 'bundle') consider(m);
+    if (m.kind === 'state') { lastState = m; applyState(m); }
+  }, open => { $('dot').classList.toggle('ok', open); if (open) msg(''); else msg('Reconnecting to the relay…'); });
+  const hist = await relay.history();
+  const b = [...hist].reverse().find(m => m.kind === 'bundle');
+  lastState = [...hist].reverse().find(m => m.kind === 'state' && b && m.build === b.build) || lastState;
+  if (b) await consider(b);
+  else loading('Waiting for your laptop…', 'Open your deck in pocket-presenter on the laptop. It appears here by itself.');
+}
+start().catch(e => loading('Something went wrong', e.message || String(e)));
+setInterval(() => {
+  const s = t0 ? Math.floor((Date.now() - t0) / 1000) : 0, c = $('clock');
+  c.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}, 250);
+</script>
+</body></html>
