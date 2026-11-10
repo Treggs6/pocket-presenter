@@ -16,7 +16,7 @@ Two ways to connect, picked on the drop page:
 
 Deck format: each slide is a <section>; speaker notes go in <aside class="notes"> inside it; elements with
 class="fragment" appear one click at a time. reveal.js decks work as they are. See README.md."""
-import argparse, hashlib, http.server, json, os, posixpath, re, shutil, socket, sys, tempfile, threading, time
+import argparse, hashlib, signal, http.server, json, os, posixpath, re, shutil, socket, sys, tempfile, threading, time
 import urllib.parse, webbrowser
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -252,6 +252,9 @@ def main():
     print('  Put the laptop on your phone\'s hotspot (or one network with the phone). Ctrl+C to stop.\n')
     if not args.no_open:
         webbrowser.open(url)
+    def stop(*_):                                       # quitting the Mac app sends SIGTERM: clean up as for Ctrl+C
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, stop)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
