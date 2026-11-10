@@ -93,6 +93,12 @@ function phoneState(text, ok) {
 
 // ---- internet mode: pair once (remembered on this laptop), share the deck encrypted, sync clicks via the relay
 async function online(d) {
+  // pocket-presenter's own relay first; if it can't be reached, the free public ntfy.sh
+  if (new URL(d.relay).host !== 'ntfy.sh') {
+    phoneState('Connecting to the relay…');
+    const ok = await fetch(`${d.relay}/v1/health`, { signal: AbortSignal.timeout(6000) }).then(r => r.ok).catch(() => false);
+    if (!ok) d.relay = 'https://ntfy.sh';
+  }
   let pair = null;
   try { pair = JSON.parse(localStorage.getItem('pp-pair') || 'null'); } catch (e) {}
   if (!pair || pair.relay !== d.relay) {

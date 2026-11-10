@@ -12,6 +12,20 @@ the laptop, or use a clicker) and both move together.
 - **Your deck, as it is:** any HTML page. Each slide is a `<section>`, notes go in `<aside class="notes">`, and builds
   use `class="fragment"`. reveal.js decks work unchanged.
 
+## Download (Mac)
+
+**[Download Pocket Presenter for Mac](https://github.com/Treggs6/pocket-presenter/releases/latest/download/Pocket-Presenter-mac.zip)**:
+unzip it and drag **Pocket Presenter** to Applications. It includes everything it needs, Python too, and runs on
+Apple Silicon and Intel Macs.
+
+**Opening it the first time:** the app isn't notarized by Apple, so macOS warns that it can't check it. Open it
+once, click **Done** on the warning, then go to **System Settings → Privacy & Security**, scroll down to
+*"Pocket Presenter" was blocked* and click **Open Anyway**. After that it opens normally.
+
+Then open it, drop your deck on the page that appears, and scan the QR code with your phone.
+
+On Windows or Linux, or to run it from the source, use the steps below.
+
 ## Quick start
 
 1. Make sure the laptop and the phone both have internet. They don't need to be on the same network: venue Wi-Fi
@@ -44,17 +58,17 @@ which networks they're on.
 - **Remembered:** the laptop and phone remember the pairing. Next time, open the phone page again (from your
   browser history, or add it to the home screen) and it picks up whatever deck the laptop has open. No need to
   rescan.
-- **What goes to the phone:** what the phone needs to preview your slides. Files over 3 MB, usually video, stay on
-  the laptop and show as a blank on the phone; the room still sees them. At most 12 MB goes up.
+- **What goes to the phone:** the whole deck, video included (files up to 20 MB, 120 MB in all), so the phone's
+  preview matches the room.
 
-The relay is [ntfy.sh](https://ntfy.sh), a free public service, by default. Its free tier allows each network 250
-messages a day (a click is one message), files of up to 2 MB (pocket-presenter splits the deck to fit) and 20 MB
-stored at once. That's plenty for a few run-throughs and the talk.
+**The relay.** pocket-presenter uses its own relay, `2-29-148-41.sslip.io`, an [ntfy](https://ntfy.sh) server that
+only carries pocket-presenter's channels. There's nothing to set up. If it can't be reached, the laptop falls back
+to the free public [ntfy.sh](https://ntfy.sh) by itself, and you rescan the code. ntfy.sh's free tier is tighter:
+250 messages a day per network (a click is one message), and the phone only gets the deck's files under 3 MB
+(12 MB in all), so video stays on the laptop and shows as a blank on the phone.
 
-**Your own relay.** Any [ntfy server](https://docs.ntfy.sh/install/) works. Put its address in the **Relay** box on
-the drop page (it's remembered), or start with `python3 present.py --relay https://your-ntfy-server`. With your
-own relay, the whole deck goes to the phone, video included (files up to 20 MB, 120 MB in all), and there are no
-public daily limits. The relay must be `https://`, or the phone page can't reach it. A small server with
+**Your own relay.** Any [ntfy server](https://docs.ntfy.sh/install/) works:
+`python3 present.py --relay https://your-ntfy-server`. The relay must be `https://`, or the phone page can't reach it. A small server with
 [Caddy](https://caddyserver.com) in front of ntfy is enough; to keep it from being used as a general relay, set
 `auth-default-access: deny-all` and allow only pocket-presenter's channels:
 `ntfy access everyone 'pp-*' read-write`.
@@ -68,16 +82,20 @@ Python accept connections. Those are the usual reasons this mode can't connect.
 
 ## Mac app
 
-To get a double-clickable app instead of the terminal, run this once:
+The [download](#download-mac) is the easy way. Open the app and your browser shows the drop page: choose your
+deck and the QR code appears. Click the Dock icon to bring the page back, and quit the app to stop presenting.
+It uses whichever port is free, starting at 8000.
+
+To build it yourself from the source (on a Mac):
 
 ```bash
-mac/make-app.sh            # builds ~/Applications/Pocket Presenter.app (or pass another folder)
+mac/make-app.sh                   # builds ~/Applications/Pocket Presenter.app, using the Mac's Python 3.8+
+WITH_PYTHON=1 mac/make-app.sh     # the same, with its own Python inside (how the download is built)
 ```
 
-The app carries its own copy of `present.py` and `app/`, so it works from anywhere, and you can drag it to
-`/Applications` or the Dock. Open it and your browser shows the drop page: choose your deck and the QR code
-appears. Click the Dock icon to bring the page back, and quit the app to stop presenting. It uses whichever port
-is free, starting at 8000, and needs Python 3.8 or newer. Rebuild it after you change `present.py` or `app/`.
+Rebuild it after you change `present.py` or `app/`. The downloadable app is built by GitHub Actions
+(`.github/workflows/mac-app.yml`): pushing a version tag such as `v1.0.0` builds it and attaches it to that
+release.
 
 ## Writing a deck
 

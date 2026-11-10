@@ -10,7 +10,8 @@ Python 3.8+, nothing to install.
 
 Two ways to connect, picked on the drop page:
   Internet (default): the phone and laptop can be on any networks, as long as both are online. The laptop
-    encrypts the deck and sends it through a relay (ntfy.sh by default); the key only lives in the QR code.
+    encrypts the deck and sends it through a relay (pocket-presenter's own, or ntfy.sh if that's unreachable);
+    the key only lives in the QR code.
   Same Wi-Fi: no internet; the phone talks straight to the laptop (the laptop on the phone's hotspot).
 
 Deck format: each slide is a <section>; speaker notes go in <aside class="notes"> inside it; elements with
@@ -235,8 +236,9 @@ def main():
     ap = argparse.ArgumentParser(description='Present your HTML deck with your phone as the remote.')
     ap.add_argument('--port', type=int, default=8000)
     ap.add_argument('--no-open', action='store_true', help="don't open the browser")
-    ap.add_argument('--relay', default='https://ntfy.sh',
-                    help='internet mode: the ntfy server that carries clicks and the encrypted deck (default ntfy.sh)')
+    ap.add_argument('--relay', default='https://2-29-148-41.sslip.io',
+                    help="internet mode: the ntfy server that carries clicks and the encrypted deck (default: pocket-presenter's "
+                         'relay; if it is unreachable, the laptop falls back to https://ntfy.sh)')
     ap.add_argument('--phone-url', default='https://treggs6.github.io/pocket-presenter/app/phone.html',
                     help='internet mode: where the phone page is hosted (a fork can host its own on GitHub Pages)')
     args = ap.parse_args()

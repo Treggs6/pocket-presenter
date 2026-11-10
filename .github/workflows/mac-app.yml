@@ -1,0 +1,46 @@
+# Builds the downloadable Mac app (with its own Python) on a GitHub Mac.
+#   pull requests touching the app: build it and keep the zip as a run artifact, to check before merging
+#   a version tag (git tag v1.0.0 && git push --tags): build it and attach it to that release
+name: Mac app
+on:
+  pull_request:
+    paths: ['mac/**', 'app/**', 'present.py', '.github/workflows/mac-app.yml']
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Pocket Presenter.app with its own Python
+        run: WITH_PYTHON=1 mac/make-app.sh "$RUNNER_TEMP/out"
+      - name: Check the app starts and serves the drop page
+        run: |
+          APP="$RUNNER_TEMP/out/Pocket Presenter.app/Contents/Resources"
+          "$APP/python/$(uname -m)/bin/python3" "$APP/present.py" --port 8123 --no-open &
+          for i in $(seq 1 50); do curl -sf http://localhost:8123/info >/dev/null && break; sleep 0.2; done
+          curl -sf http://localhost:8123/drop.html | grep -q 'Drop your deck'
+          curl -sf http://localhost:8123/info | grep -q '"relay"'
+          kill %1
+          codesign --verify --deep "$RUNNER_TEMP/out/Pocket Presenter.app" && echo "signature ok"
+      - name: Zip
+        run: |
+          cd "$RUNNER_TEMP/out"
+          ditto -c -k --sequesterRsrc --keepParent "Pocket Presenter.app" "$RUNNER_TEMP/Pocket-Presenter-mac.zip"
+          ls -lh "$RUNNER_TEMP/Pocket-Presenter-mac.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pocket-Presenter-mac
+          path: ${{ runner.temp }}/Pocket-Presenter-mac.zip
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --title "Pocket Presenter $GITHUB_REF_NAME" \
+              --notes "Download **Pocket-Presenter-mac.zip**, unzip it, and drag Pocket Presenter to Applications. It includes its own Python. The first time you open it, see the README's \"Opening the app the first time\"."
+          gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP/Pocket-Presenter-mac.zip" --clobber

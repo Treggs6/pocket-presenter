@@ -42,9 +42,9 @@ pre{background:#0b0b10;border:1px solid #2a2a3c;border-radius:10px;padding:14px;
   <option value="internet">the internet (any networks)</option>
   <option value="local">the same Wi-Fi or hotspot (no internet)</option>
  </select></label>
- <label id="relayrow">Relay <input id="relay" placeholder="https://ntfy.sh" style="width:280px" spellcheck="false"></label>
  <span id="pick" hidden>Deck file <select id="entry"></select> <button class="go" id="start">Present</button></span>
 </div>
+<p id="modenote" style="color:#9a9ab4;font-size:14px;margin-top:10px;line-height:1.5"></p>
 <div id="status"></div>
 
 <details><summary>How to write a deck for pocket-presenter</summary>
@@ -68,11 +68,16 @@ pre{background:#0b0b10;border:1px solid #2a2a3c;border-radius:10px;padding:14px;
 <script>
 const $ = id => document.getElementById(id);
 try { $('mode').value = localStorage.getItem('pp-mode') || 'internet'; } catch (e) {}
-$('mode').onchange = () => { try { localStorage.setItem('pp-mode', $('mode').value); } catch (e) {} relayRow(); };
-function relayRow() { $('relayrow').style.display = $('mode').value === 'internet' ? '' : 'none'; }
-try { $('relay').value = localStorage.getItem('pp-relay') || ''; } catch (e) {}
-$('relay').onchange = () => { try { localStorage.setItem('pp-relay', $('relay').value.trim()); } catch (e) {} };
-relayRow();
+const NOTES = {
+  internet: 'Works on any networks, as long as the laptop and phone both have internet (say, venue Wi-Fi and mobile data). '
+    + 'The deck goes to your phone encrypted; the key only travels in the QR code.',
+  local: 'No internet needed: put the laptop on your phone\'s hotspot. Venue Wi-Fi often keeps devices apart, so the '
+    + 'hotspot is the dependable choice. On a Mac, allow Python\'s incoming connections if asked.' };
+function modeNote() { $('modenote').textContent = NOTES[$('mode').value] + ' '; const a = document.createElement('a');
+  a.href = 'https://github.com/Treggs6/pocket-presenter#how-the-phone-connects'; a.target = '_blank'; a.textContent = 'Which should I pick?';
+  a.style.color = '#f5a524'; $('modenote').appendChild(a); }
+$('mode').onchange = () => { try { localStorage.setItem('pp-mode', $('mode').value); } catch (e) {} modeNote(); };
+modeNote();
 const PREFER = ['index.html', 'deck.html', 'slides.html', 'presentation.html'];
 let files = [];                                      // [{path, file}]
 
@@ -112,7 +117,7 @@ async function upload(entry) {
     if (!r.ok) { status(`Couldn't load ${f.path}.`); return; }
     status(`Loading your deck… ${++k} / ${files.length}`);
   }
-  const r = await fetch('/load', { method: 'POST', body: JSON.stringify({ entry, title: entry.split('/').pop(), target: +$('target').value || 0, mode: $('mode').value, relay: $('relay').value.trim() }) });
+  const r = await fetch('/load', { method: 'POST', body: JSON.stringify({ entry, title: entry.split('/').pop(), target: +$('target').value || 0, mode: $('mode').value }) });
   if (!r.ok) { status((await r.json()).error || 'Something went wrong.'); return; }
   location.href = '/present.html';
 }
