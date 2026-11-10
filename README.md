@@ -28,6 +28,19 @@ the laptop, or use a clicker) and both move together.
    *Phone connected ✓*, the code fades away.
 5. Press **F** on the laptop for full screen and present from your phone.
 
+## Mac app
+
+To get a double-clickable app instead of the terminal, run this once:
+
+```bash
+mac/make-app.sh            # builds ~/Applications/Pocket Presenter.app (or pass another folder)
+```
+
+The app carries its own copy of `present.py` and `app/`, so it works from anywhere, and you can drag it to
+`/Applications` or the Dock. Open it and your browser shows the drop page: choose your deck and the QR code
+appears. Click the Dock icon to bring the page back, and quit the app to stop presenting. It uses whichever port
+is free, starting at 8000, and needs Python 3.8 or newer. Rebuild it after you change `present.py` or `app/`.
+
 ## Writing a deck
 
 ```html
@@ -64,6 +77,9 @@ the laptop, or use a clicker) and both move together.
   all work. pocket-presenter turns off reveal's own controls and keyboard so the phone stays in charge.
 
 `app/sample/deck.html` is a working example.
+
+**Already have a deck in PowerPoint, Keynote, Google Slides or PDF?** [CONVERTING.md](CONVERTING.md) has a
+prompt to give an AI coding agent that converts it, speaker notes included.
 
 ## Keys on the laptop
 
