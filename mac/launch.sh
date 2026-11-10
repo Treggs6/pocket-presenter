@@ -18,6 +18,8 @@ find_python() {   # the app's own Python first (the downloadable app has one), t
   done
 }
 
+export PYTHONDONTWRITEBYTECODE=1   # never write into the app: that would break its signature
+
 case "$1" in
   stop)
     [ -f "$PIDF" ] && kill "$(cat "$PIDF")" 2>/dev/null

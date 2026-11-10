@@ -25,6 +25,8 @@ if [ "${WITH_PYTHON:-0}" = 1 ]; then   # python-build-standalone, pinned and che
     tar -xzf "$BUILD/$f" -C "$dir" --strip-components 1
     rm -rf "$dir"/lib/python3.*/{test,idlelib,tkinter,turtledemo,ensurepip,lib2to3,pydoc_data,unittest/test} \
            "$dir"/lib/{tcl,tk,itcl,thread}* "$dir"/share "$dir"/include
+    # compile now, before signing: Python must never write into the signed app later
+    "$dir/bin/python3" -m compileall -q -j 0 "$dir/lib" >/dev/null || true
   done
 fi
 

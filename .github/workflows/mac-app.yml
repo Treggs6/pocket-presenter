@@ -19,13 +19,15 @@ jobs:
         run: WITH_PYTHON=1 mac/make-app.sh "$RUNNER_TEMP/out"
       - name: Check the app starts and serves the drop page
         run: |
-          APP="$RUNNER_TEMP/out/Pocket Presenter.app/Contents/Resources"
+          BUNDLE="$RUNNER_TEMP/out/Pocket Presenter.app"; APP="$BUNDLE/Contents/Resources"
+          codesign --verify --deep --strict "$BUNDLE" && echo "signature ok after build"
+          export PYTHONDONTWRITEBYTECODE=1   # as launch.sh runs it
           "$APP/python/$(uname -m)/bin/python3" "$APP/present.py" --port 8123 --no-open &
           for i in $(seq 1 50); do curl -sf http://localhost:8123/info >/dev/null && break; sleep 0.2; done
           curl -sf http://localhost:8123/drop.html | grep -q 'Drop your deck'
           curl -sf http://localhost:8123/info | grep -q '"relay"'
-          kill %1
-          codesign --verify --deep "$RUNNER_TEMP/out/Pocket Presenter.app" && echo "signature ok"
+          kill %1; wait || true
+          codesign --verify --deep --strict "$BUNDLE" && echo "signature still ok after running"
       - name: Zip
         run: |
           cd "$RUNNER_TEMP/out"
