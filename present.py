@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """pocket-presenter: present your own HTML deck from your laptop, with your phone as the remote.
 
-    python3 present.py [--port 8000] [--no-open]
+    python3 present.py [--port 8000] [--no-open] [--relay URL] [--phone-url URL]
 
 The browser opens a page where you drop your deck (an .html file, or its folder if it has images or videos). The
-laptop then shows the deck full screen (press F) with a QR code: scan it with your phone, on the same network
-(the laptop on your phone's hotspot is easiest), and your phone becomes the remote, with the slide, your notes,
-the first line after the next click, and a clock. Clicks on either one move both. Python 3.8+, nothing to install,
-no internet needed.
+laptop then shows the deck full screen (press F) with a QR code: scan it with your phone and it becomes the remote,
+with the slide, your notes, the first line after the next click, and a clock. Clicks on either one move both.
+Python 3.8+, nothing to install.
+
+Two ways to connect, picked on the drop page:
+  Internet (default): the phone and laptop can be on any networks, as long as both are online. The laptop
+    encrypts the deck and sends it through a relay (pocket-presenter's own, or ntfy.sh if that's unreachable);
+    the key only lives in the QR code.
+  Same Wi-Fi: no internet; the phone talks straight to the laptop (the laptop on the phone's hotspot).
 
 Deck format: each slide is a <section>; speaker notes go in <aside class="notes"> inside it; elements with
 class="fragment" appear one click at a time. reveal.js decks work as they are. See README.md."""
@@ -18,7 +23,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 APP = os.path.join(HERE, 'app')                     # the app's own pages: drop page, audience shell, phone remote
 STORE = tempfile.mkdtemp(prefix='pocket-presenter-')  # dropped decks live here while the app runs
 cond = threading.Condition()
-state = {'step': 0, 't0': None, 'black': False, 'remotes': 0, 'build': '', 'entry': '', 'title': '', 'target': 0}
+state = {'step': 0, 't0': None, 'black': False, 'remotes': 0, 'build': '', 'entry': '', 'title': '', 'target': 0,
+         'mode': 'internet', 'relay': ''}   # relay: picked on the drop page, else --relay
 args = None
 
 
@@ -72,7 +78,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if path.startswith('/events'):
             return self.events('role=remote' in url.query)
         if path == '/info':
-            return self.send_json({'remote': [f'http://{ip}:{args.port}/remote.html' for ip in lan_ips()], **state})
+            return self.send_json({'remote': [f'http://{ip}:{args.port}/remote.html' for ip in lan_ips()],
+                                   'phone_url': args.phone_url, **state, 'relay': (state['relay'] or args.relay).rstrip('/')})
+        if path == '/files':                              # the laptop packs these for the phone (internet mode)
+            if not self.local():
+                return self.send_json({'error': 'laptop only'}, 403)
+            deck, out = os.path.join(STORE, 'deck'), []
+            for root, _, files in os.walk(deck):
+                for f in sorted(files):
+                    fp = os.path.join(root, f)
+                    out.append({'path': os.path.relpath(fp, deck).replace(os.sep, '/'), 'size': os.path.getsize(fp),
+                                'type': self.guess_type(fp)})
+            return self.send_json({'entry': state['entry'], 'build': state['build'], 'title': state['title'], 'files': out})
+        if path.startswith('/raw/'):                      # a deck file as it is, without the runtime added
+            rel = safe_rel(path[len('/raw/'):])
+            if not self.local():
+                return self.send_json({'error': 'laptop only'}, 403)
+            return self.file(os.path.join(STORE, 'deck', rel) if rel else None)
         if path.startswith('/deck/'):
             rel = safe_rel(path[len('/deck/'):])
             return self.file(os.path.join(STORE, 'deck', rel) if rel else None, inject=True)
@@ -195,7 +217,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             shutil.rmtree(deck, ignore_errors=True); shutil.move(inc, deck)
             with cond:
                 state.update(step=0, t0=None, black=False, entry=entry, title=d.get('title') or entry,
-                             target=int(d.get('target') or 0), build=h.hexdigest()[:10])
+                             target=int(d.get('target') or 0), build=h.hexdigest()[:10],
+                             mode='local' if d.get('mode') == 'local' else 'internet',
+                             relay=d['relay'].strip() if re.match(r'^https://[^\s/]+(/\S*)?$', d.get('relay') or '') else '')
                 cond.notify_all()
             print(f'  deck loaded: {entry} (build {state["build"]})')
             return self.send_json(state)
@@ -212,6 +236,11 @@ def main():
     ap = argparse.ArgumentParser(description='Present your HTML deck with your phone as the remote.')
     ap.add_argument('--port', type=int, default=8000)
     ap.add_argument('--no-open', action='store_true', help="don't open the browser")
+    ap.add_argument('--relay', default='https://2-29-148-41.sslip.io',
+                    help="internet mode: the ntfy server that carries clicks and the encrypted deck (default: pocket-presenter's "
+                         'relay; if it is unreachable, the laptop falls back to https://ntfy.sh)')
+    ap.add_argument('--phone-url', default='https://treggs6.github.io/pocket-presenter/app/phone.html',
+                    help='internet mode: where the phone page is hosted (a fork can host its own on GitHub Pages)')
     args = ap.parse_args()
     try:
         srv = Server(('0.0.0.0', args.port), Handler)

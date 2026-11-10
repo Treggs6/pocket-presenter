@@ -54,7 +54,7 @@
   function pauseAll(root) { root.querySelectorAll('video,audio').forEach(m => { try { m.pause(); } catch (e) {} }); }
   function startMedia(sec) {
     if (preview) return;
-    sec.querySelectorAll('video[autoplay],audio[autoplay]').forEach(m => { try { m.currentTime = 0; m.play(); } catch (e) {} });
+    sec.querySelectorAll('video[autoplay],audio[autoplay]').forEach(m => { try { m.currentTime = 0; const p = m.play(); if (p) p.catch(() => {}); } catch (e) {} });
   }
 
   // ---- plain HTML decks: show one <section> at a time

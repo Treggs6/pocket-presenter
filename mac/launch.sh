@@ -12,11 +12,13 @@ running() {   # our server is up: its process is alive and the port answers like
     curl -s -m 2 "http://localhost:$(cat "$PORTF")/info" | grep -q '"remotes"'
 }
 
-find_python() {
-  for p in /opt/homebrew/bin/python3 /usr/local/bin/python3 /Library/Frameworks/Python.framework/Versions/Current/bin/python3 /usr/bin/python3; do
+find_python() {   # the app's own Python first (the downloadable app has one), then one installed on the Mac
+  for p in "$HERE/python/$(uname -m)/bin/python3" /opt/homebrew/bin/python3 /usr/local/bin/python3 /Library/Frameworks/Python.framework/Versions/Current/bin/python3 /usr/bin/python3; do
     [ -x "$p" ] && "$p" -c 'import sys; sys.exit(sys.version_info < (3, 8))' 2>/dev/null && { echo "$p"; return; }
   done
 }
+
+export PYTHONDONTWRITEBYTECODE=1   # never write into the app: that would break its signature
 
 case "$1" in
   stop)
@@ -25,7 +27,7 @@ case "$1" in
   start)
     if running; then open "http://localhost:$(cat "$PORTF")/"; exit 0; fi
     PY="$(find_python)"
-    [ -n "$PY" ] || { echo "Pocket Presenter needs Python 3.8 or newer. Install it from python.org, then open the app again." >&2; exit 1; }
+    [ -n "$PY" ] || { echo "Pocket Presenter needs Python 3.8 or newer. Install it from python.org, or download the app from github.com/Treggs6/pocket-presenter/releases (it includes Python), then open it again." >&2; exit 1; }
     for port in $(seq 8000 8020); do
       "$PY" "$HERE/present.py" --port "$port" --no-open >"$LOG" 2>&1 </dev/null &
       pid=$!

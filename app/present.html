@@ -19,17 +19,25 @@ html,body{height:100%;background:#000;overflow:hidden;font-family:-apple-system,
 <div id="connect"><div>
  <div class="k">SCAN WITH YOUR PHONE</div><div id="qr"></div><div id="qrurl"></div>
  <div id="qrstate">Waiting for your phone…</div>
- <div id="tips">The phone and this laptop need to be on the same network (the laptop on your phone's hotspot is easiest).<br>
+ <div id="tips"><span id="how">The phone and this laptop need to be on the same network (the laptop on your phone's hotspot is easiest).</span><br>
  F full screen · Q this code · B black screen · ← → move · Esc leaves full screen</div>
 </div></div>
 <div id="hint">F full screen · Q phone QR code · B black · ← →</div>
 <script src="/qrcode.js"></script>
+<script src="/relay.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const frame = $('deck');
 let i = 0, n = 1, info = null, entry = null, blackOn = false, qrAuto = false, firstState = true;
 
-function post(d) { fetch('/go', { method: 'POST', body: JSON.stringify(d) }).catch(() => {}); }
+let relay = null, t0 = null;                       // internet mode: the relay to the phone, and the talk clock's start
+function post(d) {
+  fetch('/go', { method: 'POST', body: JSON.stringify(d) }).catch(() => {});
+  if (relay && info) {
+    if ('step' in d && d.step > 0 && !t0) t0 = Date.now();
+    relay.send({ kind: 'state', build: info.build, step: i, black: blackOn, t0 });
+  }
+}
 function show(s) { i = s; frame.contentWindow && frame.contentWindow.postMessage({ pp: 'goto', step: i }, '*'); }
 function go(k) { k = Math.max(0, Math.min(n - 1, k)); if (k === i) return; show(k); post({ step: k }); }
 function setBlack(on) { blackOn = on; $('black').style.display = on ? 'block' : 'none'; }
@@ -71,12 +79,87 @@ fetch('/info').then(r => r.json()).then(d => {
     if (st.entry !== entry || (info.build && st.build !== info.build)) { info.build = st.build; i = st.step; loadDeck(st); }
     if (st.step !== i) show(st.step);
     if (st.black !== blackOn) setBlack(st.black);
+    if (st.mode === 'internet') return;               // the phone's status comes from the relay instead
     if (firstState) { firstState = false; if (!st.remotes) { qrAuto = true; showQR(true); } }
-    $('qrstate').textContent = st.remotes ? 'Phone connected ✓' : 'Waiting for your phone…';
-    $('qrstate').classList.toggle('ok', !!st.remotes);
-    if (st.remotes && qrAuto) { qrAuto = false; setTimeout(() => showQR(false), 1200); }
+    phoneState(st.remotes ? 'Phone connected ✓' : 'Waiting for your phone…', !!st.remotes);
   };
+  if (d.mode === 'internet') online(d).catch(e => phoneState(e.message || String(e)));
 });
+
+function phoneState(text, ok) {
+  $('qrstate').textContent = text; $('qrstate').classList.toggle('ok', !!ok);
+  if (ok && qrAuto) { qrAuto = false; setTimeout(() => showQR(false), 1200); }
+}
+
+// ---- internet mode: pair once (remembered on this laptop), share the deck encrypted, sync clicks via the relay
+async function online(d) {
+  // pocket-presenter's own relay first; if it can't be reached, the free public ntfy.sh
+  if (new URL(d.relay).host !== 'ntfy.sh') {
+    phoneState('Connecting to the relay…');
+    const ok = await fetch(`${d.relay}/v1/health`, { signal: AbortSignal.timeout(6000) }).then(r => r.ok).catch(() => false);
+    if (!ok) d.relay = 'https://ntfy.sh';
+  }
+  let pair = null;
+  try { pair = JSON.parse(localStorage.getItem('pp-pair') || 'null'); } catch (e) {}
+  if (!pair || pair.relay !== d.relay) {
+    pair = { ...(await PP.newPairing()), relay: d.relay };
+    try { localStorage.setItem('pp-pair', JSON.stringify(pair)); } catch (e) {}
+  }
+  relay = new PP.Relay(d.relay, pair.topic);
+  relay.onError = t => { if (t) phoneState(t); };
+  const link = `${d.phone_url}#r=${encodeURIComponent(d.relay)}&t=${pair.topic}&k=${pair.key}`;
+  const q = qrcode(0, 'L'); q.addData(link); q.make();
+  $('qr').innerHTML = q.createSvgTag({ cellSize: 8, margin: 0, scalable: true });
+  $('qrurl').textContent = new URL(d.phone_url).host + ' (scan the code: the link carries your key)';
+  $('how').textContent = 'Phone and laptop both need internet; they can be on different networks. Your phone remembers this pairing.';
+  qrAuto = true; showQR(true);
+
+  relay.listen(m => {
+    if (m.kind === 'join') phoneState('Phone connected ✓', true);
+    if (m.kind === 'state' && m.build === info.build) {
+      if (m.t0 !== undefined) t0 = m.t0;
+      if (m.black !== blackOn) { setBlack(m.black); fetch('/go', { method: 'POST', body: JSON.stringify({ black: m.black }) }).catch(() => {}); }
+      if (m.step !== i) { show(m.step); fetch('/go', { method: 'POST', body: JSON.stringify({ step: m.step }) }).catch(() => {}); }
+      if (!$('qrstate').classList.contains('ok')) phoneState('Phone connected ✓', true);
+    }
+  });
+
+  // share this deck with the phone, unless it already went up recently (the relay keeps files for about 3 hours)
+  let up = {}; try { up = JSON.parse(localStorage.getItem('pp-up') || '{}'); } catch (e) {}
+  if (up.topic === pair.topic && up.build === d.build && Date.now() - up.at < 2.5 * 3600e3) {
+    phoneState('Waiting for your phone…');
+  } else {
+    await shareDeck(d, pair);
+    try { localStorage.setItem('pp-up', JSON.stringify({ topic: pair.topic, build: d.build, at: Date.now() })); } catch (e) {}
+    phoneState('Deck ready. Waiting for your phone…');
+  }
+  relay.send({ kind: 'state', build: d.build, step: i, black: blackOn, t0 });
+}
+
+async function shareDeck(d, pair) {
+  // The phone only needs enough to preview. On ntfy.sh's free tier (20 MB held per network for 3 hours), files over
+  // 3 MB (usually video) stay on the laptop and at most 12 MB goes up; your own relay can take the whole deck.
+  const free = new URL(d.relay).host === 'ntfy.sh', MB = 1024 * 1024;
+  const PER_FILE = (free ? 3 : 20) * MB, TOTAL = (free ? 12 : 120) * MB;
+  const list = await (await fetch('/files')).json();
+  const files = [], skipped = []; let total = 0;
+  const order = list.files.slice().sort((a, b) => (b.path === list.entry) - (a.path === list.entry)
+    || (/^(video|audio)\//.test(a.type) - /^(video|audio)\//.test(b.type)) || a.size - b.size);
+  for (const f of order) {
+    if (f.path !== list.entry && (f.size > PER_FILE || total + f.size > TOTAL)) { skipped.push(f.path); continue; }
+    files.push(f); total += f.size;
+  }
+  const blobs = [];
+  for (const [k, f] of files.entries()) {
+    phoneState(`Packing the deck for your phone… ${k + 1} / ${files.length}`);
+    blobs.push(await (await fetch('/raw/' + f.path.split('/').map(encodeURIComponent).join('/'))).arrayBuffer());
+  }
+  const header = { build: d.build, entry: list.entry, title: list.title, skipped,
+                   files: files.map((f, k) => ({ path: f.path, type: f.type, size: blobs[k].byteLength })) };
+  const manifest = await relay.uploadDeck(pair.key, PP.pack(header, blobs),
+    p => phoneState(`Sending the deck to the relay (encrypted)… ${Math.round(p * 100)}%`));
+  await relay.publishNow({ kind: 'bundle', build: d.build, entry: list.entry, title: list.title, ...manifest });
+}
 setTimeout(() => { $('hint').style.opacity = 0; }, 7000);
 </script>
 </body></html>
