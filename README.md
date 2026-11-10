@@ -14,9 +14,10 @@ the laptop, or use a clicker) and both move together.
 
 ## Download (Mac)
 
-**[Download Pocket Presenter for Mac](https://github.com/Treggs6/pocket-presenter/releases/latest/download/Pocket-Presenter-mac.zip)**:
-unzip it and drag **Pocket Presenter** to Applications. It includes everything it needs, Python too, and runs on
-Apple Silicon and Intel Macs.
+**[Download Pocket Presenter for Mac](https://github.com/Treggs6/pocket-presenter/releases/latest/download/Pocket-Presenter-mac.dmg)**:
+open it and drag **Pocket Presenter** onto the Applications folder next to it. It includes everything it needs,
+Python too, and runs on Apple Silicon and Intel Macs. No Terminal needed. (Prefer a zip?
+[Here it is](https://github.com/Treggs6/pocket-presenter/releases/latest/download/Pocket-Presenter-mac.zip).)
 
 **Opening it the first time:** the app isn't notarized by Apple, so macOS warns that it can't check it. Open it
 once, click **Done** on the warning, then go to **System Settings → Privacy & Security**, scroll down to
