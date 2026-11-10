@@ -1,0 +1,128 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>pocket-presenter</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{min-height:100%;background:#0e0e14;color:#e6e6f0;font-family:-apple-system,system-ui,sans-serif}
+main{max-width:760px;margin:0 auto;padding:56px 24px}
+h1{font-size:34px;letter-spacing:-.5px} h1 span{color:#f5a524}
+.lead{color:#a8a8c0;font-size:17px;margin:10px 0 30px;line-height:1.5}
+#drop{border:2px dashed #3a3a55;border-radius:18px;padding:46px 24px;text-align:center;background:#151520;transition:.2s}
+#drop.over{border-color:#f5a524;background:#1d1a14}
+#drop b{font-size:21px;display:block;margin-bottom:8px} #drop p{color:#9a9ab4;font-size:15px}
+.row{display:flex;gap:10px;justify-content:center;margin-top:20px;flex-wrap:wrap}
+button,label.btn{font:600 15px -apple-system,system-ui,sans-serif;border:0;border-radius:10px;padding:12px 18px;cursor:pointer;background:#26263a;color:#fff}
+button.go{background:linear-gradient(#ffd37a,#f5a524);color:#1b1206;font-weight:800}
+input[type=file]{display:none}
+#opts{margin-top:22px;display:flex;gap:18px;align-items:center;color:#a8a8c0;font-size:15px;flex-wrap:wrap}
+#opts input,#opts select{background:#151520;border:1px solid #3a3a55;color:#fff;border-radius:8px;padding:8px 10px;font:inherit}
+#opts input{width:70px}
+#status{margin-top:18px;min-height:22px;color:#f5a524;font-size:15px}
+details{margin-top:38px;background:#151520;border:1px solid #2a2a3c;border-radius:14px;padding:16px 20px}
+summary{cursor:pointer;font-weight:700}
+details p,details li{color:#b4b4c8;line-height:1.6;font-size:15px;margin-top:10px} details ul{padding-left:20px}
+pre{background:#0b0b10;border:1px solid #2a2a3c;border-radius:10px;padding:14px;margin-top:12px;overflow:auto;font-size:13px;line-height:1.5;color:#d6d6e6}
+</style></head>
+<body><main>
+<h1>pocket<span>-</span>presenter</h1>
+<p class="lead">Drop your HTML deck here. This laptop shows the slides to the room; your phone becomes the remote, with your notes.</p>
+
+<div id="drop">
+ <b>Drop your deck here</b>
+ <p>An .html file, or its whole folder if it uses images or videos from other files.</p>
+ <div class="row">
+  <label class="btn">Choose file<input id="file" type="file" accept=".html,.htm"></label>
+  <label class="btn">Choose folder<input id="folder" type="file" webkitdirectory multiple></label>
+  <button id="sample">Try the sample deck</button>
+ </div>
+</div>
+
+<div id="opts">
+ <label>Talk length <input id="target" type="number" min="0" max="240" placeholder="min"> minutes (optional)</label>
+ <span id="pick" hidden>Deck file <select id="entry"></select> <button class="go" id="start">Present</button></span>
+</div>
+<div id="status"></div>
+
+<details><summary>How to write a deck for pocket-presenter</summary>
+ <p>Any HTML page works. Each slide is a <code>&lt;section&gt;</code>, your speaker notes go in
+ <code>&lt;aside class="notes"&gt;</code> inside it, and anything with <code>class="fragment"</code> appears one click at a time.
+ reveal.js decks work as they are.</p>
+<pre>&lt;section&gt;
+  &lt;h1&gt;Hello&lt;/h1&gt;
+  &lt;p class="fragment"&gt;Shows on the next click&lt;/p&gt;
+  &lt;aside class="notes"&gt;
+    &lt;p&gt;What you say on this slide.&lt;/p&gt;
+  &lt;/aside&gt;
+&lt;/section&gt;</pre>
+ <ul>
+  <li>Notes inside a fragment belong to that click, so your phone shows exactly what to say before each click.</li>
+  <li>A <code>&lt;video autoplay&gt;</code> starts when its slide comes up and stops when you move on.</li>
+  <li>Lines in notes that start with <code>[brackets]</code> show as cues, like <code>[pause]</code>.</li>
+ </ul>
+</details>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const PREFER = ['index.html', 'deck.html', 'slides.html', 'presentation.html'];
+let files = [];                                      // [{path, file}]
+
+function status(t) { $('status').textContent = t; }
+
+async function walk(entry, out) {                    // a dropped folder, recursively
+  if (entry.isFile) {
+    await new Promise(res => entry.file(f => { out.push({ path: entry.fullPath.replace(/^\//, ''), file: f }); res(); }, res));
+  } else if (entry.isDirectory) {
+    const reader = entry.createReader();
+    for (;;) {
+      const batch = await new Promise(res => reader.readEntries(res, () => res([])));
+      if (!batch.length) break;
+      for (const e of batch) await walk(e, out);
+    }
+  }
+}
+
+function choose(list) {
+  files = list.filter(f => !f.path.split('/').some(p => p.startsWith('.') || p === 'node_modules'));
+  const htmls = files.map(f => f.path).filter(p => /\.html?$/i.test(p));
+  if (!htmls.length) { status('No .html file in there. Drop your deck file, or the folder that has it.'); return; }
+  htmls.sort((a, b) => a.split('/').length - b.split('/').length
+    || (PREFER.indexOf(a.split('/').pop()) + 1 || 99) - (PREFER.indexOf(b.split('/').pop()) + 1 || 99) || a.localeCompare(b));
+  if (htmls.length === 1) return upload(htmls[0]);
+  $('entry').innerHTML = htmls.map(p => `<option>${p.replace(/</g, '&lt;')}</option>`).join('');
+  $('pick').hidden = false;
+  status(`${files.length} files. Pick the deck's main file, then Present.`);
+}
+
+async function upload(entry) {
+  status('Loading your deck…');
+  await fetch('/new', { method: 'POST' });
+  let k = 0;
+  for (const f of files) {
+    const r = await fetch('/upload/' + f.path.split('/').map(encodeURIComponent).join('/'), { method: 'POST', body: f.file });
+    if (!r.ok) { status(`Couldn't load ${f.path}.`); return; }
+    status(`Loading your deck… ${++k} / ${files.length}`);
+  }
+  const r = await fetch('/load', { method: 'POST', body: JSON.stringify({ entry, title: entry.split('/').pop(), target: +$('target').value || 0 }) });
+  if (!r.ok) { status((await r.json()).error || 'Something went wrong.'); return; }
+  location.href = '/present.html';
+}
+
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => drop.addEventListener(t, () => drop.classList.remove('over')));
+drop.addEventListener('drop', async e => {
+  e.preventDefault();
+  const out = [], items = [...e.dataTransfer.items].map(it => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean);
+  if (items.length) { for (const it of items) await walk(it, out); }
+  else [...e.dataTransfer.files].forEach(f => out.push({ path: f.name, file: f }));
+  choose(out);
+});
+addEventListener('dragover', e => e.preventDefault()); addEventListener('drop', e => e.preventDefault());
+$('file').onchange = e => choose([...e.target.files].map(f => ({ path: f.name, file: f })));
+$('folder').onchange = e => choose([...e.target.files].map(f => ({ path: f.webkitRelativePath || f.name, file: f })));
+$('start').onclick = () => upload($('entry').value);
+$('sample').onclick = async () => {
+  const html = await (await fetch('/sample/deck.html')).blob();
+  files = [{ path: 'deck.html', file: html }]; upload('deck.html');
+};
+</script>
+</body></html>

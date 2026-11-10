@@ -1,0 +1,116 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0e0e14">
+<title>Remote · pocket-presenter</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#0e0e14;color:#fff;font-family:-apple-system,system-ui,sans-serif;overscroll-behavior:none}
+body{display:flex;justify-content:center}
+#app{width:100%;max-width:560px;height:100dvh;display:flex;flex-direction:column;gap:10px;touch-action:manipulation;
+  padding:max(10px,env(safe-area-inset-top)) 12px max(10px,env(safe-area-inset-bottom))}
+#bar{display:flex;align-items:center;gap:12px;font-size:15px;color:#a8a8c0}
+#clock{font:700 26px ui-monospace,Menlo,monospace;color:#fff} #clock.over{color:#f5a524}
+#dot{width:10px;height:10px;border-radius:50%;background:#e5484d;margin-left:auto} #dot.ok{background:#30a46c}
+#view{width:100%;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden;position:relative;flex:none}
+#view iframe{position:absolute;left:0;top:0;width:1280px;height:720px;border:0;transform-origin:0 0;pointer-events:none;background:#fff}
+#text{flex:1;min-height:0;overflow:auto;background:#181824;border:1px solid #2a2a3c;border-radius:12px;padding:14px 16px}
+h3{font-size:11px;letter-spacing:3px;color:#8a8aa4;font-weight:700;margin-bottom:8px}
+h3 em{font-style:normal;color:#f5a524;margin-left:6px}
+#say p{font-size:23px;line-height:1.38;font-weight:650;margin-bottom:10px}
+#say .none,#next1 .none{color:#6c6c86;font-weight:500;font-style:italic}
+#after{margin-top:16px;padding-top:12px;border-top:1px solid #2a2a3c}
+#next1 p{font-size:18px;line-height:1.38;color:#9a9ab4;font-weight:550}
+#nav{display:flex;gap:10px;flex:none}
+button{font:inherit;border:0;border-radius:14px;color:#fff;cursor:pointer;user-select:none;-webkit-user-select:none}
+#back{width:84px;background:#24243a;font-size:26px}
+#next{flex:1;height:76px;background:linear-gradient(#ffd37a,#f5a524);color:#1b1206;font-size:24px;font-weight:800;letter-spacing:1px}
+#next:active,#back:active{filter:brightness(.85)}
+#more{display:flex;justify-content:space-between;font-size:13px;color:#8a8aa4} #more span{padding:4px 0;cursor:pointer}
+#msg{display:none;background:#3b1d22;color:#ffb3b3;font-size:14px;padding:8px 12px;border-radius:10px}
+</style></head>
+<body><div id="app">
+ <div id="bar"><span id="clock">0:00</span><span id="target"></span><span id="count"></span><span id="dot"></span></div>
+ <div id="msg"></div>
+ <div id="view"><iframe id="deck" title="slide preview"></iframe></div>
+ <div id="text">
+  <h3>SAY<em id="build"></em></h3><div id="say"></div>
+  <div id="after"><h3>AFTER THE NEXT CLICK</h3><div id="next1"></div></div>
+ </div>
+ <div id="nav"><button id="back" aria-label="Back">‹</button><button id="next">NEXT ›</button></div>
+ <div id="more"><span id="black">Black screen</span><span id="reset">Reset clock</span><span id="home">Back to start</span></div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const frame = $('deck');
+let steps = [], i = 0, t0 = null, black = false, target = 0, build = null;
+
+function fit() { frame.style.transform = `scale(${$('view').clientWidth / 1280})`; }
+addEventListener('resize', fit); fit();
+function esc(t) { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+function fmt(t) { return esc(t).replace(/^(\[[^\]]*\]\s*)/, '<span style="color:#f5a524">$1</span>'); }
+
+function render() {
+  const s = steps[i], nx = steps[i + 1];
+  frame.contentWindow && frame.contentWindow.postMessage({ pp: 'goto', step: i }, '*');
+  $('count').textContent = steps.length ? `${i + 1} / ${steps.length}` : '';
+  if (!s) return;
+  $('build').textContent = s.builds ? `build ${s.build + 1} of ${s.builds + 1}` : '';
+  $('say').innerHTML = s.say.length ? s.say.map(p => `<p>${fmt(p)}</p>`).join('') : '<p class="none">No notes on this slide.</p>';
+  $('next1').innerHTML = !nx ? '<p class="none">End of the deck.</p>'
+    : nx.same ? '<p class="none">The next build on this slide (same notes).</p>'
+    : nx.say.length ? `<p>${fmt(nx.say[0])}</p>` : '<p class="none">Next slide, no notes.</p>';
+  $('text').scrollTop = 0;
+  $('black').textContent = black ? 'Show slides' : 'Black screen';
+}
+function send(d) { fetch('/go', { method: 'POST', body: JSON.stringify(d) }).catch(() => {}); }
+function go(k) {
+  k = Math.max(0, Math.min(steps.length - 1, k));
+  if (k === i) return;
+  i = k; render(); send({ step: i });
+  if (navigator.vibrate) navigator.vibrate(12);
+}
+
+$('next').onclick = () => go(i + 1);
+$('back').onclick = () => go(i - 1);
+$('home').onclick = () => { if (confirm('Go back to the first slide?')) go(0); };
+$('reset').onclick = () => { t0 = null; send({ reset: true }); };
+$('black').onclick = () => { black = !black; render(); send({ black }); };
+addEventListener('keydown', e => {                       // a Bluetooth clicker paired with the phone works too
+  if (['ArrowRight', ' ', 'PageDown', 'ArrowDown', 'Enter'].includes(e.key)) { e.preventDefault(); go(i + 1); }
+  if (['ArrowLeft', 'PageUp', 'ArrowUp'].includes(e.key)) { e.preventDefault(); go(i - 1); }
+});
+let sx = null;                                           // swipe left = next, right = back
+$('app').addEventListener('touchstart', e => { sx = e.touches[0].clientX; }, { passive: true });
+$('app').addEventListener('touchend', e => {
+  if (sx === null) return; const dx = e.changedTouches[0].clientX - sx; sx = null;
+  if (Math.abs(dx) > 70) go(dx < 0 ? i + 1 : i - 1);
+});
+addEventListener('message', ev => {
+  const d = ev.data || {};
+  if (d.pp === 'ready') { steps = d.steps; render(); }
+});
+
+function msg(t) { $('msg').style.display = t ? 'block' : 'none'; $('msg').textContent = t || ''; }
+const es = new EventSource('/events?role=remote');
+es.onopen = () => { $('dot').classList.add('ok'); msg(''); };
+es.onerror = () => { $('dot').classList.remove('ok'); msg('Lost the laptop. Check the phone and laptop are on the same network; it reconnects by itself.'); };
+es.onmessage = ev => {
+  const st = JSON.parse(ev.data);
+  if (!st.entry) { msg('No deck yet: drop one into pocket-presenter on the laptop.'); return; }
+  if (st.build !== build) {                              // first connect, or a new deck on the laptop: load it
+    build = st.build; steps = []; i = st.step;
+    frame.src = `/deck/${encodeURI(st.entry)}?pp_mode=preview`;
+    document.title = `${st.title} · Remote`;
+  }
+  t0 = st.t0; black = st.black; target = st.target;
+  $('target').textContent = target ? `/ ${target}:00` : '';
+  if (st.step !== i) i = st.step;
+  render();
+};
+setInterval(() => {
+  const s = t0 ? Math.floor((Date.now() - t0) / 1000) : 0, c = $('clock');
+  c.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; c.classList.toggle('over', !!target && s > target * 60);
+}, 250);
+</script>
+</body></html>

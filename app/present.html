@@ -1,0 +1,82 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>pocket-presenter</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;background:#000;overflow:hidden;font-family:-apple-system,system-ui,sans-serif}
+#deck{position:fixed;inset:0;width:100%;height:100%;border:0;background:#fff}
+#black{position:fixed;inset:0;background:#000;display:none;z-index:5}
+#connect{position:fixed;inset:0;background:rgba(10,10,16,.96);z-index:7;display:none;align-items:center;justify-content:center;transition:opacity .5s;color:#dcdce6;text-align:center}
+.k{font-size:15px;letter-spacing:5px;color:#9090a8;font-weight:700;margin-bottom:22px}
+#qr{background:#fff;padding:18px;border-radius:16px;display:inline-block;line-height:0} #qr svg{width:min(42vh,420px);height:auto}
+#qrurl{font:600 20px ui-monospace,Menlo,monospace;margin-top:20px;color:#fff}
+#qrstate{font-size:18px;margin-top:10px;color:#b4b4c8} #qrstate.ok{color:#30a46c;font-weight:700}
+#tips{font-size:14px;color:#80809a;margin-top:26px;line-height:1.7}
+#hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);font-size:14px;color:#ccc;background:rgba(0,0,0,.65);padding:8px 14px;border-radius:8px;z-index:6;transition:opacity .6s;white-space:nowrap}
+</style></head>
+<body>
+<iframe id="deck" title="deck" allow="autoplay; fullscreen"></iframe>
+<div id="black"></div>
+<div id="connect"><div>
+ <div class="k">SCAN WITH YOUR PHONE</div><div id="qr"></div><div id="qrurl"></div>
+ <div id="qrstate">Waiting for your phone…</div>
+ <div id="tips">The phone and this laptop need to be on the same network (the laptop on your phone's hotspot is easiest).<br>
+ F full screen · Q this code · B black screen · ← → move · Esc leaves full screen</div>
+</div></div>
+<div id="hint">F full screen · Q phone QR code · B black · ← →</div>
+<script src="/qrcode.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const frame = $('deck');
+let i = 0, n = 1, info = null, entry = null, blackOn = false, qrAuto = false, firstState = true;
+
+function post(d) { fetch('/go', { method: 'POST', body: JSON.stringify(d) }).catch(() => {}); }
+function show(s) { i = s; frame.contentWindow && frame.contentWindow.postMessage({ pp: 'goto', step: i }, '*'); }
+function go(k) { k = Math.max(0, Math.min(n - 1, k)); if (k === i) return; show(k); post({ step: k }); }
+function setBlack(on) { blackOn = on; $('black').style.display = on ? 'block' : 'none'; }
+function showQR(on) {
+  const c = $('connect');
+  if (on) { c.style.display = 'flex'; c.style.opacity = 1; } else { c.style.opacity = 0; setTimeout(() => { c.style.display = 'none'; }, 500); }
+}
+function loadDeck(st) {
+  entry = st.entry; frame.src = `/deck/${encodeURI(st.entry)}?pp_mode=audience`;
+  document.title = `${st.title} · pocket-presenter`;
+}
+
+function key(k) {
+  if (['ArrowRight', ' ', 'PageDown', 'ArrowDown', 'Enter'].includes(k)) go(i + 1);
+  else if (['ArrowLeft', 'PageUp', 'ArrowUp', 'Backspace'].includes(k)) go(i - 1);
+  else if (k === 'Home') go(0);
+  else if (k === 'End') go(n - 1);
+  else if (k === 'f' || k === 'F') { if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); }
+  else if (k === 'b' || k === 'B') { setBlack(!blackOn); post({ black: blackOn }); }
+  else if (k === 'q' || k === 'Q') { qrAuto = false; showQR($('connect').style.display !== 'flex'); }
+}
+const KEYS = ['ArrowRight', ' ', 'PageDown', 'ArrowDown', 'Enter', 'ArrowLeft', 'PageUp', 'ArrowUp', 'Backspace', 'Home', 'End', 'f', 'F', 'b', 'B', 'q', 'Q'];
+addEventListener('keydown', e => { if (e.metaKey || e.ctrlKey || e.altKey || !KEYS.includes(e.key)) return; e.preventDefault(); key(e.key); });
+addEventListener('message', ev => {
+  const d = ev.data || {};
+  if (d.pp === 'ready') { n = d.steps.length; show(i); frame.focus(); }
+  if (d.pp === 'key') key(d.key);
+});
+
+fetch('/info').then(r => r.json()).then(d => {
+  info = d;
+  if (!d.entry) { location.href = '/drop.html'; return; }
+  const q = qrcode(0, 'M'); q.addData(d.remote[0]); q.make();
+  $('qr').innerHTML = q.createSvgTag({ cellSize: 8, margin: 0, scalable: true });
+  $('qrurl').textContent = d.remote[0];
+  const es = new EventSource('/events');
+  es.onmessage = ev => {
+    const st = JSON.parse(ev.data);
+    if (st.entry !== entry || (info.build && st.build !== info.build)) { info.build = st.build; i = st.step; loadDeck(st); }
+    if (st.step !== i) show(st.step);
+    if (st.black !== blackOn) setBlack(st.black);
+    if (firstState) { firstState = false; if (!st.remotes) { qrAuto = true; showQR(true); } }
+    $('qrstate').textContent = st.remotes ? 'Phone connected ✓' : 'Waiting for your phone…';
+    $('qrstate').classList.toggle('ok', !!st.remotes);
+    if (st.remotes && qrAuto) { qrAuto = false; setTimeout(() => showQR(false), 1200); }
+  };
+});
+setTimeout(() => { $('hint').style.opacity = 0; }, 7000);
+</script>
+</body></html>

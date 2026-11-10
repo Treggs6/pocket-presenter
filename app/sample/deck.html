@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Sample deck</title>
+<style>
+  /* Any styling works. Here every slide fills the screen and scales with it. */
+  * { margin: 0; box-sizing: border-box; }
+  body { background: #11111b; color: #f2f2f7; font-family: -apple-system, system-ui, sans-serif; }
+  section { height: 100vh; display: flex; flex-direction: column; justify-content: center; padding: 0 9vw; gap: 3vh; }
+  h1 { font-size: 7.5vw; letter-spacing: -0.03em; line-height: 1.02; }
+  h2 { font-size: 4.6vw; letter-spacing: -0.02em; }
+  p, li { font-size: 2.6vw; color: #c9c9d8; line-height: 1.35; }
+  ul { padding-left: 1.2em; display: flex; flex-direction: column; gap: 1.6vh; }
+  .accent { color: #f5a524; }
+  .card { border: 2px solid #34344a; border-radius: 1.4vw; padding: 2.4vh 2vw; background: #191926; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.6vw; }
+  code { font-family: ui-monospace, Menlo, monospace; color: #f5a524; }
+</style></head>
+<body>
+
+<section>
+  <p class="accent">pocket-presenter</p>
+  <h1>Your deck.<br>Your phone.<br><span class="accent">Your notes.</span></h1>
+  <aside class="notes">
+    <p>This is the title slide. Everything you see on the phone under SAY comes from this slide's notes.</p>
+    <p>Tap NEXT on the phone, or press the right arrow on the laptop. Both screens move together.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>A slide builds <span class="accent">one click at a time</span></h2>
+  <ul>
+    <li class="fragment">First point
+      <aside class="notes"><p>Notes inside a fragment belong to that click. This line shows when the first point appears.</p></aside>
+    </li>
+    <li class="fragment">Second point
+      <aside class="notes"><p>[pause] A line starting with brackets shows as a cue. Then: the second point.</p></aside>
+    </li>
+    <li class="fragment">Third point
+      <aside class="notes"><p>And the third. The phone's AFTER THE NEXT CLICK box always shows what comes after this one.</p></aside>
+    </li>
+  </ul>
+  <aside class="notes"><p>This slide's main notes: say this before the first point appears.</p></aside>
+</section>
+
+<section>
+  <h2>Build several things together</h2>
+  <div class="cards">
+    <div class="card fragment" data-fragment-index="1"><p>Same click</p></div>
+    <div class="card fragment" data-fragment-index="1"><p>Same click</p></div>
+    <div class="card fragment" data-fragment-index="2"><p class="accent">Next click</p></div>
+  </div>
+  <aside class="notes">
+    <p>Fragments with the same data-fragment-index appear together.</p>
+    <p>These notes aren't split by click, so they stay up for every build of this slide.</p>
+  </aside>
+</section>
+
+<section>
+  <h2>A slide with no notes</h2>
+  <p>The phone says so, and still shows what comes next.</p>
+</section>
+
+<section>
+  <h2>Make your own</h2>
+  <p>Each slide is a <code>&lt;section&gt;</code>. Notes go in <code>&lt;aside class="notes"&gt;</code>.
+     Builds are <code>class="fragment"</code>. Then drop the file, or its folder, into pocket-presenter.</p>
+  <aside class="notes"><p>That's the whole format. reveal.js decks work too.</p></aside>
+</section>
+
+</body></html>
